@@ -31,7 +31,9 @@ class GeometryBase(Body):
             return world.bodies[name]
 
         uid = world.createMultiBody(
-            baseVisualShapeIndex=vis_id, baseCollisionShapeIndex=col_id, baseMass=mass
+            baseVisualShapeIndex=vis_id, 
+            baseCollisionShapeIndex=col_id, 
+            baseMass=mass
         )
         body = cls(
             world=world, uid=uid, name=name, mass=mass, ghost=shape.ghost, shape=shape

@@ -8,6 +8,7 @@ import pybullet as p
 from attrs import define
 from ezpose import SE3, SO3
 from pybullet_utils.bullet_client import BulletClient
+from typing import Callable
 
 from .data import ConstraintInfo, ContactInfo, DistanceInfo, DynamicsInfo
 from .shape import ShapeBase
@@ -86,12 +87,16 @@ class World(BulletClient):
         self.reset()
         self.watch_workspace()
         self._init = True
+        self._step_cb = None
 
     @contextmanager
     def no_rendering(self):
         self.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
         yield
         self.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+
+    def set_step_callback(self, callback:Callable):
+        self._step_cb = callback
 
     def watch_workspace(
         self, target_pos=[0, 0, 0], distance=1.0, cam_yaw=45, cam_pitch=-35
@@ -102,12 +107,6 @@ class World(BulletClient):
             cameraPitch=cam_pitch,
             cameraTargetPosition=target_pos,
         )
-
-    # def get_body_name_by_uid(self, uid):
-    #     names = [v.uid for k, v in self.bodies.items() if k == uid]
-    #     if len(names) == 0:
-    #         return None
-    #     return names[0]
 
     @property
     def bodies_and_ghosts(self):
@@ -139,7 +138,9 @@ class World(BulletClient):
             self.performCollisionDetection()
         else:
             self.stepSimulation()
-
+        if self._step_cb is not None:
+            self._step_cb()
+        
         # add delay for realtime visualization
         if self.gui and self.realtime:
             time.sleep(self.dt * self.realtime_factor)
@@ -472,11 +473,11 @@ class Body:
     def get_dynamics_info(self, link_idx=-1):
         return DynamicsInfo(*self.world.getDynamicsInfo(self.uid, link_idx))
 
-    def set_dynamics_info(self, input_dict, link_idx=-1):
+    def set_dynamics_info(self, link_idx=-1, **kwargs):
         """input_dict should contain key and value of the changeDynamics()
         mass, lateralFriction, restitution, rollingFriction, spinningFriction ..."""
         self.world.changeDynamics(
-            bodyUniqueId=self.uid, linkIndex=link_idx, **input_dict
+            bodyUniqueId=self.uid, linkIndex=link_idx, **kwargs
         )
 
     def get_aabb(self, link_idx=-1):
@@ -489,8 +490,25 @@ class Body:
             objectUniqueId=self.uid, linkIndex=link_idx, rgbaColor=rgba
         )
 
+    @classmethod
+    def create_empty_body(self, name, world):
+        mass = 0.
+        uid = p.createMultiBody(
+            baseMass=mass,
+            baseCollisionShapeIndex=-1,
+            baseVisualShapeIndex=-1,
+            basePosition=[0., 0., 0.])
+        return Body(
+            world=world, 
+            uid=uid, 
+            name=name, 
+            mass=mass, 
+            ghost=True
+        )
+
     def __repr__(self):
         return f"{self.__class__.__name__}:{self.name}"
+    
 
 
 @define
